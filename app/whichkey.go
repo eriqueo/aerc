@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mattn/go-runewidth"
 
@@ -12,26 +13,33 @@ import (
 
 // WhichKey is a non-interactive popover, shown while a key chord is pending,
 // that lists the possible next keystrokes and their annotations — narrowing as
-// more of the chord is typed. It mirrors the completion popover primitive
-// (lib/ui/popover.go) and reuses the completion_* styleset entries so it looks
-// consistent with tab-completion. Enabled via the [ui] which-key option.
+// more of the chord is typed. Entries are laid out as a multi-column grid of
+// "key → description" cells that fills the available width, like Neovim's
+// which-key. It reuses the completion_* styleset so it tracks the user's theme.
+// Enabled via the [ui] which-key option.
 type WhichKey struct {
 	uiConfig *config.UIConfig
 	entries  []whichKeyEntry
 	keyWidth int
+	descCap  int
 }
 
 type whichKeyEntry struct {
 	key  string // display for the next keystroke, e.g. "g" or "<C-r>"
-	desc string // annotation, resolved command, or "+N" for a deeper sub-chord
+	desc string // annotation, cleaned command, or "+N" for a deeper sub-chord
 }
+
+const (
+	whichKeyArrow   = " → "
+	whichKeyColGap  = 2
+	whichKeyDescCap = 28
+)
 
 // newWhichKey groups the matching bindings by their next keystroke (the one
 // immediately following the already-typed prefix) and builds a sorted,
 // renderable entry per distinct next key. prefixLen is len(pendingKeys).
 func newWhichKey(uiConfig *config.UIConfig, matches []*config.Binding, prefixLen int) *WhichKey {
 	type group struct {
-		stroke   config.KeyStroke
 		bindings []*config.Binding
 	}
 	order := []string{}
@@ -41,11 +49,10 @@ func newWhichKey(uiConfig *config.UIConfig, matches []*config.Binding, prefixLen
 		if len(b.Input) <= prefixLen {
 			continue
 		}
-		stroke := b.Input[prefixLen]
-		key := config.FormatKeyStrokes([]config.KeyStroke{stroke})
+		key := config.FormatKeyStrokes(b.Input[prefixLen : prefixLen+1])
 		g, ok := groups[key]
 		if !ok {
-			g = &group{stroke: stroke}
+			g = &group{}
 			groups[key] = g
 			order = append(order, key)
 		}
@@ -54,23 +61,25 @@ func newWhichKey(uiConfig *config.UIConfig, matches []*config.Binding, prefixLen
 
 	sort.Strings(order)
 
-	wk := &WhichKey{uiConfig: uiConfig}
+	wk := &WhichKey{uiConfig: uiConfig, descCap: whichKeyDescCap}
 	for _, key := range order {
 		g := groups[key]
 		desc := ""
 		// Prefer a binding that terminates right after this keystroke: its
-		// annotation (or, lacking one, the command it maps to) is the label.
+		// annotation (or, lacking one, a cleaned form of the command) is the
+		// label.
 		for _, b := range g.bindings {
 			if len(b.Input) == prefixLen+1 {
 				if b.Annotation != "" {
 					desc = b.Annotation
 				} else {
-					desc = config.FormatKeyStrokes(b.Output)
+					desc = cleanCommand(config.FormatKeyStrokes(b.Output))
 				}
 				break
 			}
 		}
-		// Otherwise this key only opens deeper chords — show it as a sub-menu.
+		// Otherwise this key only opens deeper chords — show it as a sub-menu,
+		// matching Neovim which-key's "+N" group hint.
 		if desc == "" {
 			desc = fmt.Sprintf("+%d", len(g.bindings))
 		}
@@ -80,15 +89,39 @@ func newWhichKey(uiConfig *config.UIConfig, matches []*config.Binding, prefixLen
 	return wk
 }
 
-// width returns the desired popover width for the current entries.
-func (wk *WhichKey) width() int {
+// cleanCommand turns a raw command output into a compact label for bindings
+// that carry no annotation: drop the leading ":" and trailing "<Enter>", and
+// truncate. Annotated bindings never reach this.
+func cleanCommand(out string) string {
+	out = strings.TrimSpace(out)
+	out = strings.TrimSuffix(out, "<Enter>")
+	out = strings.TrimPrefix(out, ":")
+	out = strings.TrimSpace(out)
+	if runewidth.StringWidth(out) > whichKeyDescCap {
+		out = runewidth.Truncate(out, whichKeyDescCap, "…")
+	}
+	return out
+}
+
+// cellWidth is the width of one "key → desc" cell.
+func (wk *WhichKey) cellWidth() int {
 	descWidth := 0
 	for _, e := range wk.entries {
 		descWidth = max(descWidth, runewidth.StringWidth(e.desc))
 	}
-	descWidth = min(descWidth, 60)
-	// " key " pill + " desc" + trailing pad
-	return wk.keyWidth + 2 + 1 + descWidth + 2
+	descWidth = min(descWidth, wk.descCap)
+	return wk.keyWidth + runewidth.StringWidth(whichKeyArrow) + descWidth
+}
+
+// layout returns the column count and row count for the given total width.
+func (wk *WhichKey) layout(totalWidth int) (cols, rows int) {
+	cell := wk.cellWidth()
+	cols = (totalWidth + whichKeyColGap) / (cell + whichKeyColGap)
+	if cols < 1 {
+		cols = 1
+	}
+	rows = (len(wk.entries) + cols - 1) / cols
+	return cols, rows
 }
 
 func (wk *WhichKey) Draw(ctx *ui.Context) {
@@ -98,13 +131,23 @@ func (wk *WhichKey) Draw(ctx *ui.Context) {
 
 	ctx.Fill(0, 0, ctx.Width(), ctx.Height(), ' ', bg)
 
+	cols, _ := wk.layout(ctx.Width())
+	cell := wk.cellWidth()
 	for i, e := range wk.entries {
-		if i >= ctx.Height() {
+		row := i / cols
+		col := i % cols
+		if row >= ctx.Height() {
 			break
 		}
+		x := col * (cell + whichKeyColGap)
 		key := runewidth.FillRight(e.key, wk.keyWidth)
-		x := ctx.Printf(0, i, keyStyle, " %s ", key)
-		ctx.Printf(x, i, descStyle, " %s", e.desc)
+		desc := e.desc
+		if runewidth.StringWidth(desc) > wk.descCap {
+			desc = runewidth.Truncate(desc, wk.descCap, "…")
+		}
+		n := ctx.Printf(x, row, keyStyle, "%s", key)
+		n = ctx.Printf(n, row, bg, "%s", whichKeyArrow)
+		ctx.Printf(n, row, descStyle, "%s", desc)
 	}
 }
 

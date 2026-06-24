@@ -236,11 +236,13 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 	if len(wk.entries) == 0 {
 		return
 	}
-	height := len(wk.entries)
+	// Full-width grid anchored at the bottom, drawn above the status line.
+	width := ctx.Width()
+	_, height := wk.layout(width)
 	if maxH := ctx.Height() - 1; height > maxH {
 		height = maxH
 	}
-	ctx.Popover(0, ctx.Height()-1, wk.width(), height, wk)
+	ctx.Popover(0, ctx.Height()-1, width, height, wk)
 }
 
 func (aerc *Aerc) HumanReadableBindings() []string {
