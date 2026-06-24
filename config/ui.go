@@ -75,6 +75,8 @@ type UIConfig struct {
 	CompletionDelay               time.Duration `ini:"completion-delay" default:"250ms"`
 	CompletionMinChars            int           `ini:"completion-min-chars" default:"1" parse:"ParseCompletionMinChars"`
 	CompletionPopovers            bool          `ini:"completion-popovers" default:"true"`
+	WhichKey                      bool          `ini:"which-key" default:"false"`
+	WhichKeyDelay                 time.Duration `ini:"which-key-delay" default:"500ms"`
 	MsglistScrollOffset           int           `ini:"msglist-scroll-offset" default:"0"`
 	DialogPosition                string        `ini:"dialog-position" default:"center" parse:"ParseDialogPosition"`
 	DialogWidth                   int           `ini:"dialog-width" default:"50" parse:"ParseDialogDimensions"`

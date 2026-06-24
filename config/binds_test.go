@@ -86,6 +86,51 @@ func TestGetBinding(t *testing.T) {
 	}, BINDING_FOUND, ":open")
 }
 
+func TestGetMatchingBindings(t *testing.T) {
+	assert := assert.New(t)
+
+	bindings := NewKeyBindings()
+	add := func(binding, cmd string) {
+		b, err := ParseBinding(binding, cmd, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		bindings.Add(b)
+	}
+
+	add("gi", ":inbox")
+	add("ga", ":archive")
+	add("gg", ":first")
+	add("zz", ":center")
+
+	cmds := func(matches []*Binding) []string {
+		var out []string
+		for _, m := range matches {
+			out = append(out, FormatKeyStrokes(m.Output))
+		}
+		return out
+	}
+
+	// Strict prefix "g" matches the three g-bindings, but not the exact
+	// terminal nor unrelated chords.
+	g, _ := ParseKeyStrokes("g")
+	assert.ElementsMatch(
+		[]string{":inbox", ":archive", ":first"},
+		cmds(bindings.GetMatchingBindings(g)),
+	)
+
+	// A complete binding is not a strict prefix of itself.
+	gi, _ := ParseKeyStrokes("gi")
+	assert.Empty(bindings.GetMatchingBindings(gi))
+
+	// Non-matching prefix yields nothing.
+	x, _ := ParseKeyStrokes("x")
+	assert.Empty(bindings.GetMatchingBindings(x))
+
+	// Empty prefix matches every binding.
+	assert.Len(bindings.GetMatchingBindings(nil), 4)
+}
+
 func TestKeyStrokeFormatting(t *testing.T) {
 	tests := []struct {
 		stroke    KeyStroke

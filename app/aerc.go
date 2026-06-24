@@ -43,6 +43,14 @@ type Aerc struct {
 	beep        func()
 	dialog      ui.DrawableInteractive
 
+	// which-key popover state. whichKeyAt is the time the popover becomes
+	// visible (now + which-key-delay), set when a chord first goes incomplete;
+	// whichKeyTimer just forces a redraw at that boundary. Both are only
+	// touched on the main loop except the timer callback, which only calls the
+	// thread-safe ui.Invalidate — so no shared mutable flag races.
+	whichKeyTimer *time.Timer
+	whichKeyAt    time.Time
+
 	Crypto crypto.Provider
 }
 
@@ -202,6 +210,37 @@ func (aerc *Aerc) Draw(ctx *ui.Context) {
 			aerc.dialog.Draw(ctx.Subcontext(4, h/2-2, w-8, 4))
 		}
 	}
+	aerc.drawWhichKey(ctx)
+}
+
+// drawWhichKey registers the which-key popover when a chord has been pending
+// longer than which-key-delay. It anchors bottom-left, just above the status
+// line, and reuses lib/ui's popover primitive via ctx.Popover.
+func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
+	if !config.Ui.WhichKey || len(aerc.pendingKeys) == 0 {
+		return
+	}
+	if aerc.whichKeyAt.IsZero() || time.Now().Before(aerc.whichKeyAt) {
+		return
+	}
+	bindings := aerc.getBindings()
+	matches := bindings.GetMatchingBindings(aerc.pendingKeys)
+	if bindings.Globals && config.Binds.Global != nil {
+		matches = append(matches,
+			config.Binds.Global.GetMatchingBindings(aerc.pendingKeys)...)
+	}
+	if len(matches) == 0 {
+		return
+	}
+	wk := newWhichKey(aerc.SelectedAccountUiConfig(), matches, len(aerc.pendingKeys))
+	if len(wk.entries) == 0 {
+		return
+	}
+	height := len(wk.entries)
+	if maxH := ctx.Height() - 1; height > maxH {
+		height = maxH
+	}
+	ctx.Popover(0, ctx.Height()-1, wk.width(), height, wk)
 }
 
 func (aerc *Aerc) HumanReadableBindings() []string {
@@ -288,7 +327,35 @@ func (aerc *Aerc) getBindings() *config.KeyBindings {
 	}
 }
 
+// showWhichKey arms the which-key popover for the current pending chord. The
+// popover is registered in Draw once whichKeyAt has passed; the timer just
+// guarantees a redraw at that delay boundary. Called on every incomplete key,
+// but only the first one of a chord (re)starts the timer, so the delay is
+// measured from the chord's first keystroke and the popover stays put as the
+// chord narrows.
+func (aerc *Aerc) showWhichKey() {
+	if !config.Ui.WhichKey {
+		return
+	}
+	if aerc.whichKeyTimer != nil {
+		return
+	}
+	delay := config.Ui.WhichKeyDelay
+	aerc.whichKeyAt = time.Now().Add(delay)
+	aerc.whichKeyTimer = time.AfterFunc(delay, ui.Invalidate)
+}
+
+// hideWhichKey tears down the popover when a chord completes, resets, or aborts.
+func (aerc *Aerc) hideWhichKey() {
+	if aerc.whichKeyTimer != nil {
+		aerc.whichKeyTimer.Stop()
+		aerc.whichKeyTimer = nil
+	}
+	aerc.whichKeyAt = time.Time{}
+}
+
 func (aerc *Aerc) simulate(strokes []config.KeyStroke) {
+	aerc.hideWhichKey()
 	aerc.pendingKeys = []config.KeyStroke{}
 	bindings := aerc.getBindings()
 	complete := aerc.SelectedAccountUiConfig().CompletionMinChars != config.MANUAL_COMPLETE
@@ -391,7 +458,11 @@ func (aerc *Aerc) Event(event vaxis.Event) bool {
 			case config.BINDING_NOT_FOUND:
 			}
 		}
+		if incomplete {
+			aerc.showWhichKey()
+		}
 		if !incomplete {
+			aerc.hideWhichKey()
 			aerc.pendingKeys = []config.KeyStroke{}
 			exKey := bindings.ExKey
 			if aerc.simulating > 0 {

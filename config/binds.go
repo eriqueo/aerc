@@ -446,6 +446,30 @@ func (bindings *KeyBindings) GetBinding(
 	return BINDING_NOT_FOUND, nil
 }
 
+// GetMatchingBindings returns every binding whose Input has prefix as a strict
+// prefix — i.e. there is at least one further keystroke after prefix. Used by
+// the which-key popover to list the possible continuations of a pending chord.
+func (bindings *KeyBindings) GetMatchingBindings(prefix []KeyStroke) []*Binding {
+	var matches []*Binding
+	for _, binding := range bindings.Bindings {
+		if len(binding.Input) <= len(prefix) {
+			continue
+		}
+		match := true
+		for i, stroke := range prefix {
+			if stroke.Modifiers != binding.Input[i].Modifiers ||
+				stroke.Key != binding.Input[i].Key {
+				match = false
+				break
+			}
+		}
+		if match {
+			matches = append(matches, binding)
+		}
+	}
+	return matches
+}
+
 func (bindings *KeyBindings) GetReverseBindings(output []KeyStroke) [][]KeyStroke {
 	var inputs [][]KeyStroke
 

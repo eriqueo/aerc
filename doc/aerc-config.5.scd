@@ -390,6 +390,20 @@ These options are configured in the *[ui]* section of _aerc.conf_.
 
 	Default: _1_
 
+*which-key* = _true_|_false_
+	When typing a multi-key binding (a "chord"), show a popover listing the
+	possible next keystrokes and their annotations, narrowing as the chord is
+	typed. Annotations are taken from the _#_ comment above each binding in
+	*aerc-binds*(5).
+
+	Default: _false_
+
+*which-key-delay* = _<duration>_
+	How long to wait, after a chord becomes incomplete, before showing the
+	*which-key* popover. Has no effect unless *which-key* is _true_.
+
+	Default: _500ms_
+
 *border-char-vertical* = _"<char>"_++
 *border-char-horizontal* = _"<char>"_
 	Set stylable characters (via the *border* element) for vertical and
