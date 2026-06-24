@@ -150,6 +150,14 @@ These options are configured in the *[ui]* section of _aerc.conf_.
 
 	Default: _flags:4,name<20%,subject,date>=_
 
+*index-headers* = _true_|_false_
+	When enabled, render a header row above the message list labelling each
+	column with its name (from *index-columns*), using the same column
+	layout. The header row is styled with the _msglist_header_ styleset
+	object (see *aerc-stylesets*(7)).
+
+	Default: _false_
+
 *column-separator* = _"<separator>"_
 	String separator inserted between columns. When a column width specifier
 	is an exact number of characters, the separator is added to it (i.e. the

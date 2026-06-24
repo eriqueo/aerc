@@ -18,6 +18,7 @@ import (
 
 type UIConfig struct {
 	IndexColumns    []*ColumnDef `ini:"index-columns" parse:"ParseIndexColumns" default:"flags:4,name<20%,subject,date>="`
+	IndexHeaders    bool         `ini:"index-headers" default:"false"`
 	ColumnSeparator string       `ini:"column-separator" default:"  "`
 
 	DirListLeft  *template.Template `ini:"dirlist-left" default:"{{.Folder}}"`

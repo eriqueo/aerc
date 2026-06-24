@@ -121,6 +121,8 @@ styling.
 :  The messages not matching the mailbox / query, displayed for context.
 |  *msglist_thread_orphan*
 :  Threaded messages that have a missing parent message.
+|  *msglist_header*
+:  The column-header row shown above the message list when *index-headers* is enabled.
 |  *dirlist_default*
 :  The default style for directories in the directory list.
 |  *dirlist_unread*

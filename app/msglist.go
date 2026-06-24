@@ -70,9 +70,15 @@ func (ml *MessageList) AlignMessage(pos AlignPosition) {
 }
 
 func (ml *MessageList) Draw(ctx *ui.Context) {
-	ml.height = ctx.Height()
-	ml.width = ctx.Width()
 	uiConfig := SelectedAccountUiConfig()
+	// Reserve the top row for a column-header row when index-headers is set;
+	// the message rows occupy the remaining height.
+	headerRows := 0
+	if uiConfig.IndexHeaders {
+		headerRows = 1
+	}
+	ml.height = ctx.Height() - headerRows
+	ml.width = ctx.Width()
 	ctx.Fill(0, 0, ctx.Width(), ctx.Height(), ' ',
 		uiConfig.GetStyle(config.STYLE_MSGLIST_DEFAULT))
 
@@ -124,12 +130,12 @@ func (ml *MessageList) Draw(ctx *ui.Context) {
 			} else {
 				style = uiConfig.GetStyleSelected(config.STYLE_ERROR)
 			}
-			ctx.Printf(0, r, style, "error: %s", params.err)
+			c.Printf(0, r, style, "error: %s", params.err)
 			return true
 		}
 		if params.needsHeaders {
 			needsHeaders = append(needsHeaders, params.uid)
-			ml.spinner.Draw(ctx.Subcontext(0, r, c.Width(), 1))
+			ml.spinner.Draw(c.Subcontext(0, r, c.Width(), 1))
 			return true
 		}
 		return false
@@ -175,10 +181,18 @@ func (ml *MessageList) Draw(ctx *ui.Context) {
 		}
 	}
 
-	table.Draw(ctx.Subcontext(0, 0, textWidth, ctx.Height()))
+	if headerRows > 0 {
+		// Header first so column widths are computed once and shared with the
+		// body Draw below (both use the same textWidth).
+		table.DrawHeader(
+			ctx.Subcontext(0, 0, textWidth, 1),
+			uiConfig.GetStyle(config.STYLE_MSGLIST_HEADER),
+		)
+	}
+	table.Draw(ctx.Subcontext(0, headerRows, textWidth, ctx.Height()-headerRows))
 
 	if ml.NeedScrollbar() {
-		scrollbarCtx := ctx.Subcontext(textWidth, 0, 1, ctx.Height())
+		scrollbarCtx := ctx.Subcontext(textWidth, headerRows, 1, ctx.Height()-headerRows)
 		ml.drawScrollbar(scrollbarCtx)
 	}
 

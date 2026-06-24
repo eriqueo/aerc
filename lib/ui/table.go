@@ -194,6 +194,28 @@ func (col *Column) alignCell(cell string) string {
 	return cell
 }
 
+// DrawHeader draws a single row labelling each column with its Def.Name, using
+// the exact column geometry (offsets, widths, separators) the body rows use, so
+// the header lines up with the data beneath it. The caller positions the row
+// (typically a 1-high subcontext directly above the body) and supplies the
+// style. Column widths are computed lazily and shared with the body Draw, so
+// rows must already be added before calling this.
+func (t *Table) DrawHeader(ctx *Context, style vaxis.Style) {
+	if !t.widthsComputed {
+		t.computeWidths(ctx.Width())
+		t.widthsComputed = true
+	}
+	ctx.Fill(0, 0, ctx.Width(), 1, ' ', style)
+	for _, col := range t.Columns {
+		if col.Width == -1 {
+			// column overflows screen width
+			continue
+		}
+		cell := col.alignCell(col.Def.Name)
+		ctx.Printf(col.Offset, 0, style, "%s%s", cell, col.Separator)
+	}
+}
+
 func (t *Table) Draw(ctx *Context) {
 	if !t.widthsComputed {
 		t.computeWidths(ctx.Width())
