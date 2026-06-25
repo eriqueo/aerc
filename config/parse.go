@@ -164,6 +164,12 @@ func setField(
 		} else {
 			panic(fmt.Sprintf("unsupported type %s", typePath(ft)))
 		}
+	case reflect.Map:
+		if method.IsValid() {
+			fieldVal.Set(methodValue)
+		} else {
+			panic(fmt.Sprintf("unsupported type %s", typePath(ft)))
+		}
 	case reflect.Ptr:
 		if method.IsValid() {
 			fieldVal.Set(methodValue)
