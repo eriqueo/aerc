@@ -30,8 +30,8 @@ type whichKeyEntry struct {
 }
 
 const (
-	whichKeyArrow   = " → "
-	whichKeyColGap  = 2
+	whichKeySep     = "  " // between key and label, todui-style "  {key}  {label}"
+	whichKeyColGap  = 3     // between grid columns
 	whichKeyDescCap = 28
 )
 
@@ -103,14 +103,14 @@ func cleanCommand(out string) string {
 	return out
 }
 
-// cellWidth is the width of one "key → desc" cell.
+// cellWidth is the width of one "key  desc" cell.
 func (wk *WhichKey) cellWidth() int {
 	descWidth := 0
 	for _, e := range wk.entries {
 		descWidth = max(descWidth, runewidth.StringWidth(e.desc))
 	}
 	descWidth = min(descWidth, wk.descCap)
-	return wk.keyWidth + runewidth.StringWidth(whichKeyArrow) + descWidth
+	return wk.keyWidth + runewidth.StringWidth(whichKeySep) + descWidth
 }
 
 // layout returns the column count and row count for the given total width.
@@ -140,13 +140,14 @@ func (wk *WhichKey) Draw(ctx *ui.Context) {
 			break
 		}
 		x := col * (cell + whichKeyColGap)
-		key := runewidth.FillRight(e.key, wk.keyWidth)
+		// Right-align the key (todui's "{key:>N}") so labels line up.
+		key := runewidth.FillLeft(e.key, wk.keyWidth)
 		desc := e.desc
 		if runewidth.StringWidth(desc) > wk.descCap {
 			desc = runewidth.Truncate(desc, wk.descCap, "…")
 		}
 		n := ctx.Printf(x, row, keyStyle, "%s", key)
-		n = ctx.Printf(n, row, bg, "%s", whichKeyArrow)
+		n = ctx.Printf(n, row, bg, "%s", whichKeySep)
 		ctx.Printf(n, row, descStyle, "%s", desc)
 	}
 }

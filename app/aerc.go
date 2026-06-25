@@ -213,9 +213,10 @@ func (aerc *Aerc) Draw(ctx *ui.Context) {
 	aerc.drawWhichKey(ctx)
 }
 
-// drawWhichKey registers the which-key popover when a chord has been pending
-// longer than which-key-delay. It anchors bottom-left, just above the status
-// line, and reuses lib/ui's popover primitive via ctx.Popover.
+// drawWhichKey draws the which-key popover when a chord has been pending longer
+// than which-key-delay: a centered, bordered box (lib/ui.Box) titled with the
+// pending chord, containing a multi-column "key  label" grid — the same setup
+// todui uses for its leader menu.
 func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 	if !config.Ui.WhichKey || len(aerc.pendingKeys) == 0 {
 		return
@@ -232,17 +233,39 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 	if len(matches) == 0 {
 		return
 	}
-	wk := newWhichKey(aerc.SelectedAccountUiConfig(), matches, len(aerc.pendingKeys))
+	uiConfig := aerc.SelectedAccountUiConfig()
+	wk := newWhichKey(uiConfig, matches, len(aerc.pendingKeys))
 	if len(wk.entries) == 0 {
 		return
 	}
-	// Full-width grid anchored at the bottom, drawn above the status line.
-	width := ctx.Width()
-	_, height := wk.layout(width)
-	if maxH := ctx.Height() - 1; height > maxH {
-		height = maxH
+
+	// Size the inner grid: as many columns as fit a sensible box, then center
+	// the bordered box on screen.
+	cell := wk.cellWidth()
+	maxInnerW := ctx.Width() - 4 // 2 border cols + breathing room
+	cols := (maxInnerW + whichKeyColGap) / (cell + whichKeyColGap)
+	if cols < 1 {
+		cols = 1
 	}
-	ctx.Popover(0, ctx.Height()-1, width, height, wk)
+	if cols > len(wk.entries) {
+		cols = len(wk.entries)
+	}
+	rows := (len(wk.entries) + cols - 1) / cols
+	innerW := cols*cell + (cols-1)*whichKeyColGap
+	boxW := innerW + 2
+	boxH := rows + 2
+	if boxH > ctx.Height() {
+		boxH = ctx.Height()
+	}
+	if boxW > ctx.Width() {
+		boxW = ctx.Width()
+	}
+
+	title := " " + config.FormatKeyStrokes(aerc.pendingKeys) + " "
+	box := ui.NewBox(wk, title, "", uiConfig)
+	x := (ctx.Width() - boxW) / 2
+	y := (ctx.Height() - boxH) / 2
+	box.Draw(ctx.Subcontext(x, y, boxW, boxH))
 }
 
 func (aerc *Aerc) HumanReadableBindings() []string {

@@ -155,6 +155,22 @@ func (t *Table) computeWidths(width int) {
 	}
 }
 
+// centerCell centers plain text within width, truncating with an ellipsis if it
+// doesn't fit. Used for column headers.
+func centerCell(s string, width int) string {
+	w := runewidth.StringWidth(s)
+	switch {
+	case w > width:
+		return runewidth.Truncate(s, width, "…")
+	case w < width:
+		left := (width - w) / 2
+		s = runewidth.FillLeft(s, w+left)
+		return runewidth.FillRight(s, width)
+	default:
+		return s
+	}
+}
+
 var metaCharsRegexp = regexp.MustCompile(`[\t\r\f\n\v]`)
 
 func (col *Column) alignCell(cell string) string {
@@ -196,10 +212,11 @@ func (col *Column) alignCell(cell string) string {
 
 // DrawHeader draws a single row labelling each column with its Def.Name, using
 // the exact column geometry (offsets, widths, separators) the body rows use, so
-// the header lines up with the data beneath it. The caller positions the row
-// (typically a 1-high subcontext directly above the body) and supplies the
-// style. Column widths are computed lazily and shared with the body Draw, so
-// rows must already be added before calling this.
+// the header lines up with the data beneath it. Labels are centered within
+// their column regardless of the column's own data alignment. The caller
+// positions the row (typically a 1-high subcontext directly above the body) and
+// supplies the style. Column widths are computed lazily and shared with the
+// body Draw, so rows must already be added before calling this.
 func (t *Table) DrawHeader(ctx *Context, style vaxis.Style) {
 	if !t.widthsComputed {
 		t.computeWidths(ctx.Width())
@@ -211,7 +228,7 @@ func (t *Table) DrawHeader(ctx *Context, style vaxis.Style) {
 			// column overflows screen width
 			continue
 		}
-		cell := col.alignCell(col.Def.Name)
+		cell := centerCell(col.Def.Name, col.Width)
 		ctx.Printf(col.Offset, 0, style, "%s%s", cell, col.Separator)
 	}
 }
