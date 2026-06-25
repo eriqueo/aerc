@@ -16,6 +16,7 @@ import (
 	"git.sr.ht/~rockorager/vaxis"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/emersion/go-message/mail"
+	"github.com/mattn/go-runewidth"
 
 	"git.sr.ht/~rjarry/aerc/config"
 	"git.sr.ht/~rjarry/aerc/lib"
@@ -238,9 +239,10 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 	if len(wk.entries) == 0 {
 		return
 	}
+	wk.title = config.FormatKeyStrokes(aerc.pendingKeys)
 
-	// Size the inner grid: as many columns as fit a sensible box, then center
-	// the bordered box on screen.
+	// Size the inner grid to as many columns as fit a sensible box width, then
+	// center the bordered box on screen.
 	cell := wk.cellWidth()
 	maxInnerW := ctx.Width() - 4 // 2 border cols + breathing room
 	cols := (maxInnerW + whichKeyColGap) / (cell + whichKeyColGap)
@@ -253,6 +255,9 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 	rows := (len(wk.entries) + cols - 1) / cols
 	innerW := cols*cell + (cols-1)*whichKeyColGap
 	boxW := innerW + 2
+	if tw := runewidth.StringWidth(wk.title) + 6; boxW < tw {
+		boxW = tw
+	}
 	boxH := rows + 2
 	if boxH > ctx.Height() {
 		boxH = ctx.Height()
@@ -261,11 +266,9 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 		boxW = ctx.Width()
 	}
 
-	title := " " + config.FormatKeyStrokes(aerc.pendingKeys) + " "
-	box := ui.NewBox(wk, title, "", uiConfig)
 	x := (ctx.Width() - boxW) / 2
 	y := (ctx.Height() - boxH) / 2
-	box.Draw(ctx.Subcontext(x, y, boxW, boxH))
+	wk.Draw(ctx.Subcontext(x, y, boxW, boxH))
 }
 
 func (aerc *Aerc) HumanReadableBindings() []string {

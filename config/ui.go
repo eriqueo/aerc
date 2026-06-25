@@ -76,8 +76,9 @@ type UIConfig struct {
 	CompletionDelay               time.Duration `ini:"completion-delay" default:"250ms"`
 	CompletionMinChars            int           `ini:"completion-min-chars" default:"1" parse:"ParseCompletionMinChars"`
 	CompletionPopovers            bool          `ini:"completion-popovers" default:"true"`
-	WhichKey                      bool          `ini:"which-key" default:"false"`
-	WhichKeyDelay                 time.Duration `ini:"which-key-delay" default:"500ms"`
+	WhichKey                      bool              `ini:"which-key" default:"false"`
+	WhichKeyDelay                 time.Duration     `ini:"which-key-delay" default:"500ms"`
+	WhichKeyGroups                map[string]string `ini:"which-key-groups" parse:"ParseWhichKeyGroups"`
 	MsglistScrollOffset           int           `ini:"msglist-scroll-offset" default:"0"`
 	DialogPosition                string        `ini:"dialog-position" default:"center" parse:"ParseDialogPosition"`
 	DialogWidth                   int           `ini:"dialog-width" default:"50" parse:"ParseDialogDimensions"`
@@ -301,6 +302,24 @@ func (*UIConfig) ParseCompletionMinChars(section *ini.Section, key *ini.Key) (in
 		return MANUAL_COMPLETE, nil
 	}
 	return key.Int()
+}
+
+// ParseWhichKeyGroups parses a "key:label,key:label" list into a map used by the
+// which-key popover to label group (prefix) keys, e.g. "g:go,f:find,m:mark".
+func (*UIConfig) ParseWhichKeyGroups(section *ini.Section, key *ini.Key) (map[string]string, error) {
+	m := map[string]string{}
+	for _, pair := range strings.Split(key.String(), ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(pair, ":")
+		if !ok {
+			return nil, fmt.Errorf("invalid which-key-groups entry %q (want key:label)", pair)
+		}
+		m[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return m, nil
 }
 
 func (ui *UIConfig) ClearCache() {

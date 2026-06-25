@@ -60,6 +60,12 @@ const (
 	STYLE_COMPLETION_GUTTER
 	STYLE_COMPLETION_PILL
 
+	STYLE_WHICHKEY_DEFAULT
+	STYLE_WHICHKEY_KEY
+	STYLE_WHICHKEY_GROUP
+	STYLE_WHICHKEY_BORDER
+	STYLE_WHICHKEY_TITLE
+
 	STYLE_TAB
 	STYLE_STACK
 	STYLE_SPINNER
@@ -113,6 +119,12 @@ var StyleNames = map[string]StyleObject{
 	"completion_description": STYLE_COMPLETION_DESCRIPTION,
 	"completion_gutter":      STYLE_COMPLETION_GUTTER,
 	"completion_pill":        STYLE_COMPLETION_PILL,
+
+	"whichkey_default": STYLE_WHICHKEY_DEFAULT,
+	"whichkey_key":     STYLE_WHICHKEY_KEY,
+	"whichkey_group":   STYLE_WHICHKEY_GROUP,
+	"whichkey_border":  STYLE_WHICHKEY_BORDER,
+	"whichkey_title":   STYLE_WHICHKEY_TITLE,
 
 	"tab":     STYLE_TAB,
 	"stack":   STYLE_STACK,
@@ -353,6 +365,15 @@ msglist_marked.fg = 15
 msglist_pill.bg = 12
 msglist_pill.fg = 15
 part_mimetype.fg = 12
+whichkey_default.bg = 0
+whichkey_default.fg = 7
+whichkey_key.fg = 3
+whichkey_key.bold = true
+whichkey_group.fg = 4
+whichkey_group.bold = true
+whichkey_border.fg = 3
+whichkey_title.fg = 3
+whichkey_title.bold = true
 selector_chooser.bold = true
 selector_focused.bold = true
 selector_focused.bg = 12
