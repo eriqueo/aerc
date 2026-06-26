@@ -17,11 +17,16 @@ import (
 // leader-menu look) and themes via the whichkey_* styleset objects. Enabled via
 // the [ui] which-key option.
 type WhichKey struct {
-	uiConfig  *config.UIConfig
-	title     string
-	entries   []whichKeyEntry
-	keyWidth  int
-	descWidth int
+	uiConfig *config.UIConfig
+	title    string
+	entries  []whichKeyEntry
+	keyWidth int
+
+	// Grid shape, computed by computeLayout: column count, row count, and each
+	// column's rendered width (columns are sized to their own widest cell).
+	cols      int
+	rows      int
+	colWidths []int
 }
 
 type whichKeyEntry struct {
@@ -31,10 +36,12 @@ type whichKeyEntry struct {
 }
 
 const (
-	whichKeySep     = "  " // between key and label, todui-style "{key}  {label}"
-	whichKeyColGap  = 3     // between grid columns
-	whichKeyDescCap = 26
+	whichKeyArrow   = " → " // between key and label, nvim which-key style
+	whichKeyColGap  = 3      // between grid columns
+	whichKeyDescCap = 30
 )
+
+var whichKeyArrowWidth = runewidth.StringWidth(whichKeyArrow)
 
 // newWhichKey groups the matching bindings by their next keystroke (the one
 // immediately following the already-typed prefix) and builds a sorted,
@@ -75,21 +82,21 @@ func newWhichKey(uiConfig *config.UIConfig, matches []*config.Binding, prefixLen
 				break
 			}
 		}
-		// Otherwise this key only opens deeper chords — label it from
-		// which-key-groups if we have a name, else fall back to a count.
+		// Otherwise this key only opens deeper chords — label it with its
+		// domain name plus how many bindings live under it, e.g. "buffer +7"
+		// (press b to drill into the buffer hotkeys). The domain name comes
+		// from which-key-groups; fall back to a bare count if unnamed.
 		if desc == "" {
 			isGroup = true
 			if label, ok := uiConfig.WhichKeyGroups[key]; ok && label != "" {
-				desc = label
+				desc = fmt.Sprintf("%s +%d", label, len(g.bindings))
 			} else {
 				desc = fmt.Sprintf("+%d", len(g.bindings))
 			}
 		}
 		wk.entries = append(wk.entries, whichKeyEntry{key: key, desc: desc, group: isGroup})
 		wk.keyWidth = max(wk.keyWidth, runewidth.StringWidth(key))
-		wk.descWidth = max(wk.descWidth, runewidth.StringWidth(desc))
 	}
-	wk.descWidth = min(wk.descWidth, whichKeyDescCap)
 	return wk
 }
 
@@ -112,23 +119,55 @@ func cleanCommand(out string) string {
 	return out
 }
 
-// cellWidth is the width of one "key  label" cell.
-func (wk *WhichKey) cellWidth() int {
-	return wk.keyWidth + runewidth.StringWidth(whichKeySep) + wk.descWidth
+// cellWidth is the rendered width of one "key → label" cell.
+func (wk *WhichKey) cellWidth(e whichKeyEntry) int {
+	d := runewidth.StringWidth(e.desc)
+	if d > whichKeyDescCap {
+		d = whichKeyDescCap
+	}
+	return wk.keyWidth + whichKeyArrowWidth + d
 }
 
-// layout returns the column count and row count for the given inner width.
-func (wk *WhichKey) layout(innerWidth int) (cols, rows int) {
-	cell := wk.cellWidth()
-	cols = (innerWidth + whichKeyColGap) / (cell + whichKeyColGap)
+// computeLayout chooses the fewest columns that keep the grid within maxRows
+// rows (so the box stays short on a short pane, todui-style), then sizes each
+// column to its own widest cell. Entries fill column-major (top to bottom, then
+// the next column) like nvim's which-key, so each column is a contiguous sorted
+// run. Results are stored on wk for both box sizing and drawing.
+func (wk *WhichKey) computeLayout(maxRows int) {
+	n := len(wk.entries)
+	if maxRows < 1 {
+		maxRows = 1
+	}
+	cols := (n + maxRows - 1) / maxRows
 	if cols < 1 {
 		cols = 1
 	}
-	if cols > len(wk.entries) {
-		cols = len(wk.entries)
+	rows := (n + cols - 1) / cols
+	colWidths := make([]int, cols)
+	for c := 0; c < cols; c++ {
+		for r := 0; r < rows; r++ {
+			i := c*rows + r
+			if i >= n {
+				break
+			}
+			if w := wk.cellWidth(wk.entries[i]); w > colWidths[c] {
+				colWidths[c] = w
+			}
+		}
 	}
-	rows = (len(wk.entries) + cols - 1) / cols
-	return cols, rows
+	wk.cols, wk.rows, wk.colWidths = cols, rows, colWidths
+}
+
+// gridWidth is the total inner width of the laid-out grid.
+func (wk *WhichKey) gridWidth() int {
+	w := 0
+	for _, cw := range wk.colWidths {
+		w += cw
+	}
+	if len(wk.colWidths) > 1 {
+		w += whichKeyColGap * (len(wk.colWidths) - 1)
+	}
+	return w
 }
 
 // Draw renders the full bordered box into ctx (sized to the box by the caller).
@@ -159,28 +198,31 @@ func (wk *WhichKey) drawGrid(ctx *ui.Context) {
 	keyStyle := wk.uiConfig.GetStyle(config.STYLE_WHICHKEY_KEY)
 	groupStyle := wk.uiConfig.GetStyle(config.STYLE_WHICHKEY_GROUP)
 
-	cols, _ := wk.layout(ctx.Width())
-	cell := wk.cellWidth()
-	for i, e := range wk.entries {
-		row := i / cols
-		col := i % cols
-		if row >= ctx.Height() {
-			break
+	x := 0
+	for c := 0; c < wk.cols; c++ {
+		for r := 0; r < wk.rows; r++ {
+			i := c*wk.rows + r
+			if i >= len(wk.entries) || r >= ctx.Height() {
+				break
+			}
+			e := wk.entries[i]
+			// Right-align the key (todui's "{key:>N}") so arrows line up.
+			key := runewidth.FillLeft(e.key, wk.keyWidth)
+			desc := e.desc
+			if runewidth.StringWidth(desc) > whichKeyDescCap {
+				desc = runewidth.Truncate(desc, whichKeyDescCap, "…")
+			}
+			descStyle := def
+			if e.group {
+				descStyle = groupStyle
+			}
+			n := ctx.Printf(x, r, keyStyle, "%s", key)
+			n = ctx.Printf(n, r, def, "%s", whichKeyArrow)
+			ctx.Printf(n, r, descStyle, "%s", desc)
 		}
-		x := col * (cell + whichKeyColGap)
-		// Right-align the key (todui's "{key:>N}") so labels line up.
-		key := runewidth.FillLeft(e.key, wk.keyWidth)
-		desc := e.desc
-		if runewidth.StringWidth(desc) > wk.descWidth {
-			desc = runewidth.Truncate(desc, wk.descWidth, "…")
+		if c < len(wk.colWidths) {
+			x += wk.colWidths[c] + whichKeyColGap
 		}
-		descStyle := def
-		if e.group {
-			descStyle = groupStyle
-		}
-		n := ctx.Printf(x, row, keyStyle, "%s", key)
-		n = ctx.Printf(n, row, def, "%s", whichKeySep)
-		ctx.Printf(n, row, descStyle, "%s", desc)
 	}
 }
 

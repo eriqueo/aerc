@@ -241,24 +241,17 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 	}
 	wk.title = config.FormatKeyStrokes(aerc.pendingKeys)
 
-	// Size the inner grid to as many columns as fit a sensible box width, then
-	// center the bordered box on screen.
-	cell := wk.cellWidth()
-	maxInnerW := ctx.Width() - 4 // 2 border cols + breathing room
-	cols := (maxInnerW + whichKeyColGap) / (cell + whichKeyColGap)
-	if cols < 1 {
-		cols = 1
-	}
-	if cols > len(wk.entries) {
-		cols = len(wk.entries)
-	}
-	rows := (len(wk.entries) + cols - 1) / cols
-	innerW := cols*cell + (cols-1)*whichKeyColGap
-	boxW := innerW + 2
+	// Lay the grid out to stay short on the current pane (todui-style compact
+	// box: as few columns as keep it within the available height), size each
+	// column to its own content, then center the bordered box on screen.
+	maxRows := ctx.Height() - 4 // 2 border rows + breathing room
+	wk.computeLayout(maxRows)
+
+	boxW := wk.gridWidth() + 2
 	if tw := runewidth.StringWidth(wk.title) + 6; boxW < tw {
 		boxW = tw
 	}
-	boxH := rows + 2
+	boxH := wk.rows + 2
 	if boxH > ctx.Height() {
 		boxH = ctx.Height()
 	}
