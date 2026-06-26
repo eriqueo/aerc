@@ -19,6 +19,7 @@ import (
 type WhichKey struct {
 	uiConfig *config.UIConfig
 	title    string
+	legend   string // footer hint on the bottom border, e.g. "esc close · ⌫ back"
 	entries  []whichKeyEntry
 	keyWidth int
 
@@ -181,6 +182,7 @@ func (wk *WhichKey) gridWidth() int {
 func (wk *WhichKey) Draw(ctx *ui.Context) {
 	border := wk.uiConfig.GetStyle(config.STYLE_WHICHKEY_BORDER)
 	titleStyle := wk.uiConfig.GetStyle(config.STYLE_WHICHKEY_TITLE)
+	legendStyle := wk.uiConfig.GetStyle(config.STYLE_WHICHKEY_LEGEND)
 	def := wk.uiConfig.GetStyle(config.STYLE_WHICHKEY_DEFAULT)
 
 	w, h := ctx.Width(), ctx.Height()
@@ -195,6 +197,13 @@ func (wk *WhichKey) Draw(ctx *ui.Context) {
 	ctx.Printf(0, h-1, border, "╚%s╝", strings.Repeat("═", w-2))
 	if wk.title != "" && w > 6 {
 		ctx.Printf(2, 0, titleStyle, " %s ", runewidth.Truncate(wk.title, w-6, "…"))
+	}
+	// Footer legend, centered on the bottom border as a chip.
+	if wk.legend != "" {
+		lw := runewidth.StringWidth(wk.legend)
+		if w > lw+4 {
+			ctx.Printf((w-lw-2)/2, h-1, legendStyle, " %s ", wk.legend)
+		}
 	}
 
 	gx, gy := 1+whichKeyPadX, 1+whichKeyPadY

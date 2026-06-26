@@ -240,6 +240,11 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 		return
 	}
 	wk.title = config.FormatKeyStrokes(aerc.pendingKeys)
+	if len(aerc.pendingKeys) > 1 {
+		wk.legend = "esc close · ⌫ back"
+	} else {
+		wk.legend = "esc close"
+	}
 
 	// Lay the grid out to stay short on the current pane (todui-style compact
 	// box: as few columns as keep it within the available height), size each
@@ -453,6 +458,19 @@ func (aerc *Aerc) Event(event vaxis.Event) bool {
 			return false
 		}
 		aerc.statusline.Expire()
+		// Backspace while a chord is pending walks up one level (which-key
+		// "back") instead of aborting the whole chord. Leaves whichKeyAt
+		// untouched so the popover re-renders immediately for the shorter
+		// prefix; hides it once the chord is empty again.
+		if len(aerc.pendingKeys) > 0 && event.Keycode == vaxis.KeyBackspace &&
+			event.Modifiers == 0 {
+			aerc.pendingKeys = aerc.pendingKeys[:len(aerc.pendingKeys)-1]
+			if len(aerc.pendingKeys) == 0 {
+				aerc.hideWhichKey()
+			}
+			ui.Invalidate()
+			return true
+		}
 		stroke := config.KeyStroke{
 			Modifiers: event.Modifiers,
 		}

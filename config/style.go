@@ -65,6 +65,7 @@ const (
 	STYLE_WHICHKEY_GROUP
 	STYLE_WHICHKEY_BORDER
 	STYLE_WHICHKEY_TITLE
+	STYLE_WHICHKEY_LEGEND
 
 	STYLE_TAB
 	STYLE_STACK
@@ -125,6 +126,7 @@ var StyleNames = map[string]StyleObject{
 	"whichkey_group":   STYLE_WHICHKEY_GROUP,
 	"whichkey_border":  STYLE_WHICHKEY_BORDER,
 	"whichkey_title":   STYLE_WHICHKEY_TITLE,
+	"whichkey_legend":  STYLE_WHICHKEY_LEGEND,
 
 	"tab":     STYLE_TAB,
 	"stack":   STYLE_STACK,
@@ -374,6 +376,7 @@ whichkey_group.bold = true
 whichkey_border.fg = 3
 whichkey_title.fg = 3
 whichkey_title.bold = true
+whichkey_legend.fg = 8
 selector_chooser.bold = true
 selector_focused.bold = true
 selector_focused.bg = 12
