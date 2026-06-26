@@ -188,11 +188,11 @@ func (wk *WhichKey) Draw(ctx *ui.Context) {
 	if w < 2 || h < 2 {
 		return
 	}
-	// Rounded border.
-	ctx.Fill(0, 0, 1, h, '│', border)
-	ctx.Fill(w-1, 0, 1, h, '│', border)
-	ctx.Printf(0, 0, border, "╭%s╮", strings.Repeat("─", w-2))
-	ctx.Printf(0, h-1, border, "╰%s╯", strings.Repeat("─", w-2))
+	// Double-line border (reads as a thick frame).
+	ctx.Fill(0, 0, 1, h, '║', border)
+	ctx.Fill(w-1, 0, 1, h, '║', border)
+	ctx.Printf(0, 0, border, "╔%s╗", strings.Repeat("═", w-2))
+	ctx.Printf(0, h-1, border, "╚%s╝", strings.Repeat("═", w-2))
 	if wk.title != "" && w > 6 {
 		ctx.Printf(2, 0, titleStyle, " %s ", runewidth.Truncate(wk.title, w-6, "…"))
 	}
