@@ -37,8 +37,15 @@ type whichKeyEntry struct {
 
 const (
 	whichKeyArrow   = " → " // between key and label, nvim which-key style
-	whichKeyColGap  = 3      // between grid columns
+	whichKeyColGap  = 4      // between grid columns
 	whichKeyDescCap = 30
+
+	// Interior padding (inside the border) and a floor on the box size, so the
+	// popover reads as a generous raised card rather than a tight label.
+	whichKeyPadX = 3 // blank columns each side, inside the border
+	whichKeyPadY = 1 // blank rows top and bottom, inside the border
+	whichKeyMinW = 44
+	whichKeyMinH = 9
 )
 
 var whichKeyArrowWidth = runewidth.StringWidth(whichKeyArrow)
@@ -190,7 +197,12 @@ func (wk *WhichKey) Draw(ctx *ui.Context) {
 		ctx.Printf(2, 0, titleStyle, " %s ", runewidth.Truncate(wk.title, w-6, "…"))
 	}
 
-	wk.drawGrid(ctx.Subcontext(1, 1, w-2, h-2))
+	gx, gy := 1+whichKeyPadX, 1+whichKeyPadY
+	gw, gh := w-2-2*whichKeyPadX, h-2-2*whichKeyPadY
+	if gw < 1 || gh < 1 {
+		return
+	}
+	wk.drawGrid(ctx.Subcontext(gx, gy, gw, gh))
 }
 
 func (wk *WhichKey) drawGrid(ctx *ui.Context) {

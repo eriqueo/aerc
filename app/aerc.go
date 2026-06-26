@@ -243,15 +243,23 @@ func (aerc *Aerc) drawWhichKey(ctx *ui.Context) {
 
 	// Lay the grid out to stay short on the current pane (todui-style compact
 	// box: as few columns as keep it within the available height), size each
-	// column to its own content, then center the bordered box on screen.
-	maxRows := ctx.Height() - 4 // 2 border rows + breathing room
+	// column to its own content, then center the padded, bordered box on screen.
+	chromeW := 2 + 2*whichKeyPadX // border + interior padding
+	chromeH := 2 + 2*whichKeyPadY
+	maxRows := ctx.Height() - chromeH - 1 // leave a little breathing room
 	wk.computeLayout(maxRows)
 
-	boxW := wk.gridWidth() + 2
+	boxW := wk.gridWidth() + chromeW
 	if tw := runewidth.StringWidth(wk.title) + 6; boxW < tw {
 		boxW = tw
 	}
-	boxH := wk.rows + 2
+	if boxW < whichKeyMinW {
+		boxW = whichKeyMinW
+	}
+	boxH := wk.rows + chromeH
+	if boxH < whichKeyMinH {
+		boxH = whichKeyMinH
+	}
 	if boxH > ctx.Height() {
 		boxH = ctx.Height()
 	}
