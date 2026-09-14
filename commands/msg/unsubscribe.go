@@ -2,11 +2,8 @@ package msg
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"slices"
@@ -21,6 +18,18 @@ import (
 	"git.sr.ht/~rjarry/aerc/lib/log"
 	"github.com/emersion/go-message/mail"
 )
+
+const (
+	choiceHTTPS = "HTTPS (recommended)"
+	choiceEmail = "Email (fallback)"
+	choiceHTTP  = "Website (not secure)"
+	oneClickArg = "List-Unsubscribe=One-Click"
+)
+
+type unsubscribeChoice struct {
+	label  string
+	method *url.URL
+}
 
 // Unsubscribe helps people unsubscribe from mailing lists by way of the
 // List-Unsubscribe header.
@@ -98,24 +107,29 @@ func (u Unsubscribe) Execute(args []string) error {
 		}
 	}
 
-	var title string = "Select method to unsubscribe"
+	title := "Choose unsubscribe method"
 	if msg != nil && msg.Envelope != nil && len(msg.Envelope.From) > 0 {
-		title = fmt.Sprintf("%s from %s", title, msg.Envelope.From[0])
+		sender := msg.Envelope.From[0].Name
+		if sender == "" {
+			sender = msg.Envelope.From[0].Address
+		}
+		title = fmt.Sprintf("Unsubscribe from %s", sender)
 	}
 
-	options := make([]string, len(methods))
-	for i, method := range methods {
-		options[i] = method.Scheme
+	choices := unsubscribeChoices(methods)
+	options := make([]string, len(choices))
+	for i, choice := range choices {
+		options[i] = choice.label
 	}
 
-	if len(methods) == 1 {
-		unsubscribe(methods[0])
+	if len(choices) == 1 {
+		unsubscribe(choices[0].method)
 		return nil
 	}
 
 	dialog := app.NewSelectorDialog(
 		title,
-		"Press <Enter> to confirm or <ESC> to cancel",
+		"HTTPS removes you directly. Email opens a draft if HTTPS fails.",
 		options, 0, app.SelectedAccountUiConfig(),
 		func(option string, err error) {
 			app.CloseDialog()
@@ -128,9 +142,9 @@ func (u Unsubscribe) Execute(args []string) error {
 				}
 				return
 			}
-			for _, m := range methods {
-				if m.Scheme == option {
-					unsubscribe(m)
+			for _, choice := range choices {
+				if choice.label == option {
+					unsubscribe(choice.method)
 					return
 				}
 			}
@@ -140,6 +154,50 @@ func (u Unsubscribe) Execute(args []string) error {
 	app.AddDialog(dialog)
 
 	return nil
+}
+
+func unsubscribeChoices(methods []*url.URL) []unsubscribeChoice {
+	choices := make([]unsubscribeChoice, 0, len(methods))
+	appendScheme := func(scheme string) {
+		for _, method := range methods {
+			if strings.EqualFold(method.Scheme, scheme) {
+				choices = append(choices, unsubscribeChoice{method: method})
+			}
+		}
+	}
+
+	// HTTPS is the authenticated one-click route defined by RFC 8058. Keep it
+	// first even when a sender puts mailto first in the header.
+	appendScheme("https")
+	appendScheme("mailto")
+	appendScheme("http")
+	for _, method := range methods {
+		scheme := strings.ToLower(method.Scheme)
+		if scheme != "https" && scheme != "mailto" && scheme != "http" {
+			choices = append(choices, unsubscribeChoice{method: method})
+		}
+	}
+
+	labelCounts := make(map[string]int)
+	for i := range choices {
+		var label string
+		switch strings.ToLower(choices[i].method.Scheme) {
+		case "https":
+			label = choiceHTTPS
+		case "mailto":
+			label = choiceEmail
+		case "http":
+			label = choiceHTTP
+		default:
+			label = strings.ToUpper(choices[i].method.Scheme)
+		}
+		labelCounts[label]++
+		if labelCounts[label] > 1 {
+			label = fmt.Sprintf("%s %d", label, labelCounts[label])
+		}
+		choices[i].label = label
+	}
+	return choices
 }
 
 // parseUnsubscribeMethods reads the list-unsubscribe header and parses it as a
@@ -200,67 +258,87 @@ func unsubscribeMailto(u *url.URL, editHeaders, skipEditor bool) error {
 }
 
 func unsubscribeHTTP(u *url.URL, postData []string) error {
+	body, oneClick := oneClickPostBody(postData)
+	canPost := strings.EqualFold(u.Scheme, "https") && oneClick
+	options := []string{"Cancel", "Open website"}
+	focus := 1
+	prompt := fmt.Sprintf("This sender needs confirmation at %s.", u.Host)
+	if canPost {
+		options = []string{"Cancel", "Unsubscribe now", "Open website"}
+		prompt = fmt.Sprintf("Send a one-click HTTPS request to %s.", u.Host)
+	}
+
 	confirm := app.NewSelectorDialog(
-		"Do you want to unsubscribe?",
-		u.String(),
-		[]string{"No", "Yes", "Open in Browser"}, 0, app.SelectedAccountUiConfig(),
-		func(option string, _ error) {
+		"Unsubscribe?",
+		prompt,
+		options, focus, app.SelectedAccountUiConfig(),
+		func(option string, err error) {
 			app.CloseDialog()
+			if err != nil || option == "Cancel" {
+				return
+			}
 			switch option {
-			case "Yes":
-				go func() {
+			case "Unsubscribe now":
+				client := &http.Client{
+					Timeout: 15 * time.Second,
+					CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+						return http.ErrUseLastResponse
+					},
+				}
+				go func(client *http.Client) {
 					defer log.PanicHandler()
-
-					buf := bytes.NewBuffer([]byte{})
-					wr := multipart.NewWriter(buf)
-
-					for dat := range slices.Values(postData) {
-						header := strings.SplitN(dat, "=", 2)
-						if len(header) < 2 {
-							header = append(header, "")
-						}
-						_ = wr.WriteField(header[0], header[1]) // can't reasonably fail
-					}
-
-					data, err := http.Post(u.String(), "multipart/form-data", buf)
+					statusCode, status, err := postOneClick(client, u, body)
 					if err != nil {
-						app.PushError(fmt.Sprintf("Unsubscribe: failed to POST data: %v", err))
+						app.PushError(fmt.Sprintf("Unsubscribe request failed: %v", err))
 						return
 					}
-
-					responseData, err := io.ReadAll(data.Body)
-					response := string(responseData)
-					if err != nil {
-						response = fmt.Sprintf("failed to read response-data: %v", err)
+					if statusCode < 200 || statusCode >= 300 {
+						app.PushError(fmt.Sprintf(
+							"Unsubscribe request returned %s; use Open website instead.",
+							status))
+						return
 					}
-
-					body := fmt.Sprintf(
-						"Success: %s\nReceived data:\n%s",
-						data.Status,
-						response,
-					)
-
-					confirmation := app.NewSelectorDialog(
-						fmt.Sprintf("Sent request. Status %d", data.StatusCode),
-						body,
-						[]string{"OK"}, 0, app.SelectedAccountUiConfig(),
-						func(_ string, _ error) { app.CloseDialog() },
-					)
-					app.AddDialog(confirmation)
-				}()
-			case "Open in Browser":
+					app.PushStatus(fmt.Sprintf(
+						"Unsubscribe request accepted by %s (%s)", u.Host, status),
+						10*time.Second)
+				}(client)
+			case "Open website":
 				go func() {
 					defer log.PanicHandler()
 					mime := fmt.Sprintf("x-scheme-handler/%s", u.Scheme)
 					if err := lib.XDGOpenMime(u.String(), mime, ""); err != nil {
-						app.PushError("Unsubscribe:" + err.Error())
+						app.PushError("Unsubscribe: " + err.Error())
 					}
 				}()
-			default:
-				app.PushError("Unsubscribe: link will not be opened")
 			}
 		},
 	)
 	app.AddDialog(confirm)
 	return nil
+}
+
+func oneClickPostBody(postData []string) (string, bool) {
+	for _, value := range postData {
+		if strings.TrimSpace(value) == oneClickArg {
+			return oneClickArg, true
+		}
+	}
+	return "", false
+}
+
+func postOneClick(client *http.Client, endpoint *url.URL, body string) (
+	statusCode int, status string, err error,
+) {
+	req, err := http.NewRequest(http.MethodPost, endpoint.String(), strings.NewReader(body))
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode, resp.Status, nil
 }

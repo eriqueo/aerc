@@ -185,6 +185,14 @@ type SelectorDialog struct {
 	selector *Selector
 }
 
+const (
+	selectorDialogMargin   = 4
+	selectorDialogMinWidth = 44
+	selectorDialogMaxWidth = 84
+	selectorDialogPadX     = 2
+	selectorDialogLegend   = "←/→ choose · enter confirm · esc cancel"
+)
+
 func NewSelectorDialog(title string, prompt string, options []string, focus int,
 	uiConfig *config.UIConfig, cb func(string, error),
 ) *SelectorDialog {
@@ -200,46 +208,88 @@ func NewSelectorDialog(title string, prompt string, options []string, focus int,
 }
 
 func (gp *SelectorDialog) Draw(ctx *ui.Context) {
-	defaultStyle := gp.uiConfig.GetStyle(config.STYLE_DEFAULT)
-	titleStyle := gp.uiConfig.GetStyle(config.STYLE_TITLE)
+	defaultStyle := gp.uiConfig.GetStyle(config.STYLE_SELECTOR_DEFAULT)
+	borderStyle := gp.uiConfig.GetStyle(config.STYLE_SELECTOR_BORDER)
+	titleStyle := gp.uiConfig.GetStyle(config.STYLE_SELECTOR_TITLE)
+	hintStyle := gp.uiConfig.GetStyle(config.STYLE_SELECTOR_HINT)
+	w, h := ctx.Width(), ctx.Height()
 
-	ctx.Fill(0, 0, ctx.Width(), ctx.Height(), ' ', defaultStyle)
-	ctx.Fill(0, 0, ctx.Width(), 1, ' ', titleStyle)
-	ctx.Printf(1, 0, titleStyle, "%s", gp.title)
-	var i int
-	lines := strings.Split(gp.prompt, "\n")
-	for i = 0; i < len(lines); i++ {
-		ctx.Printf(1, 2+i, defaultStyle, "%s", lines[i])
+	ctx.Fill(0, 0, w, h, ' ', defaultStyle)
+	if w < 2 || h < 2 {
+		return
 	}
-	gp.selector.Draw(ctx.Subcontext(1, ctx.Height()-1, ctx.Width()-2, 1))
+
+	ctx.Fill(0, 0, 1, h, '║', borderStyle)
+	ctx.Fill(w-1, 0, 1, h, '║', borderStyle)
+	ctx.Printf(0, 0, borderStyle, "╔%s╗", strings.Repeat("═", w-2))
+	ctx.Printf(0, h-1, borderStyle, "╚%s╝", strings.Repeat("═", w-2))
+	if gp.title != "" && w > 6 {
+		title := runewidth.Truncate(gp.title, w-6, "…")
+		ctx.Printf(2, 0, titleStyle, " %s ", title)
+	}
+	legendWidth := runewidth.StringWidth(selectorDialogLegend)
+	if w > legendWidth+4 {
+		ctx.Printf((w-legendWidth-2)/2, h-1, hintStyle,
+			" %s ", selectorDialogLegend)
+	}
+
+	lines := strings.Split(gp.prompt, "\n")
+	for i, line := range lines {
+		y := 2 + i
+		if y >= h-3 {
+			break
+		}
+		contentWidth := max(w-2*(selectorDialogPadX+1), 0)
+		line = runewidth.Truncate(line, contentWidth, "…")
+		ctx.Printf(selectorDialogPadX+1, y, defaultStyle, "%s", line)
+	}
+	selectorY := h - 3
+	if selectorY > 0 {
+		gp.selector.Draw(ctx.Subcontext(1, selectorY, w-2, 1))
+	}
+}
+
+func (gp *SelectorDialog) desiredWidth() int {
+	width := selectorDialogMinWidth
+	width = max(width, runewidth.StringWidth(gp.title)+6)
+	for _, line := range strings.Split(gp.prompt, "\n") {
+		width = max(width, runewidth.StringWidth(line)+2*(selectorDialogPadX+1))
+	}
+
+	optionsWidth := 5
+	for i, option := range gp.selector.options {
+		optionsWidth += runewidth.StringWidth(option) + 2
+		if i < len(gp.selector.options)-1 {
+			optionsWidth += 5
+		}
+	}
+	width = max(width, optionsWidth)
+	width = max(width, runewidth.StringWidth(selectorDialogLegend)+4)
+	return min(width, selectorDialogMaxWidth)
+}
+
+func (gp *SelectorDialog) widthFor(available int) int {
+	if available <= 2*selectorDialogMargin {
+		return max(available, 0)
+	}
+	return min(gp.desiredWidth(), available-2*selectorDialogMargin)
 }
 
 func (gp *SelectorDialog) ContextWidth() (func(int) int, func(int) int) {
-	// horizontal starting position in columns from the left
-	start := func(int) int {
-		return 4
+	start := func(available int) int {
+		return max((available-gp.widthFor(available))/2, 0)
 	}
-	// dialog width from the starting column
-	width := func(w int) int {
-		return w - 8
-	}
+	width := func(available int) int { return gp.widthFor(available) }
 	return start, width
 }
 
 func (gp *SelectorDialog) ContextHeight() (func(int) int, func(int) int) {
-	totalHeight := 2 // title + empty line
-	totalHeight += strings.Count(gp.prompt, "\n") + 1
-	totalHeight += 2 // empty line + selector
-	start := func(h int) int {
-		s := max(h/2-totalHeight/2, 0)
-		return s
+	totalHeight := strings.Count(gp.prompt, "\n") + 7
+	start := func(available int) int {
+		return max((available-min(totalHeight, available))/2, 0)
 	}
-	height := func(h int) int {
-		if totalHeight > h {
-			return h
-		} else {
-			return totalHeight
-		}
+	height := func(available int) int {
+		return min(totalHeight, available)
 	}
 	return start, height
 }
