@@ -75,6 +75,9 @@ const (
 	STYLE_SELECTOR_DEFAULT
 	STYLE_SELECTOR_FOCUSED
 	STYLE_SELECTOR_CHOOSER
+	STYLE_SELECTOR_BORDER
+	STYLE_SELECTOR_TITLE
+	STYLE_SELECTOR_HINT
 )
 
 var StyleNames = map[string]StyleObject{
@@ -136,6 +139,9 @@ var StyleNames = map[string]StyleObject{
 	"selector_default": STYLE_SELECTOR_DEFAULT,
 	"selector_focused": STYLE_SELECTOR_FOCUSED,
 	"selector_chooser": STYLE_SELECTOR_CHOOSER,
+	"selector_border":  STYLE_SELECTOR_BORDER,
+	"selector_title":   STYLE_SELECTOR_TITLE,
+	"selector_hint":    STYLE_SELECTOR_HINT,
 }
 
 type StyleHeaderPattern struct {
@@ -381,6 +387,10 @@ selector_chooser.bold = true
 selector_focused.bold = true
 selector_focused.bg = 12
 selector_focused.fg = 15
+selector_border.fg = 3
+selector_title.fg = 3
+selector_title.bold = true
+selector_hint.fg = 8
 completion_*.bg = 8
 completion_pill.bg = 12
 completion_default.fg = 15

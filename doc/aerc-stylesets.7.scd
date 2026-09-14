@@ -157,6 +157,12 @@ styling.
 :  The focused item in a selector ui element.
 |  *selector_chooser*
 :  The item chooser in a selector ui element.
+|  *selector_border*
+:  The border of a selector dialog.
+|  *selector_title*
+:  The title of a selector dialog.
+|  *selector_hint*
+:  The key hint on the bottom border of a selector dialog.
 
 These next style objects only affect the built-in *colorize* filter and must be
 declared under a *[viewer]* section of the styleset file.
