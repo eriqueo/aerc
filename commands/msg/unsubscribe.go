@@ -31,6 +31,14 @@ type unsubscribeChoice struct {
 	method *url.URL
 }
 
+type unsubscribeFlow int
+
+const (
+	flowChooseMethod unsubscribeFlow = iota
+	flowExecuteMethod
+	flowConfirmEmail
+)
+
 // Unsubscribe helps people unsubscribe from mailing lists by way of the
 // List-Unsubscribe header.
 type Unsubscribe struct {
@@ -122,8 +130,30 @@ func (u Unsubscribe) Execute(args []string) error {
 		options[i] = choice.label
 	}
 
-	if len(choices) == 1 {
+	switch unsubscribeFlowFor(choices) {
+	case flowExecuteMethod:
 		unsubscribe(choices[0].method)
+		return nil
+	case flowConfirmEmail:
+		action := "Compose email"
+		if u.SkipEditor {
+			action = "Review email"
+		}
+		dialog := app.NewSelectorDialog(
+			title,
+			"This sender only supports unsubscribe by email.",
+			[]string{"Cancel", action}, 1, app.SelectedAccountUiConfig(),
+			func(option string, err error) {
+				app.CloseDialog()
+				if err != nil || option == "Cancel" {
+					return
+				}
+				if option == action {
+					unsubscribe(choices[0].method)
+				}
+			},
+		)
+		app.AddDialog(dialog)
 		return nil
 	}
 
@@ -154,6 +184,16 @@ func (u Unsubscribe) Execute(args []string) error {
 	app.AddDialog(dialog)
 
 	return nil
+}
+
+func unsubscribeFlowFor(choices []unsubscribeChoice) unsubscribeFlow {
+	if len(choices) == 1 {
+		if strings.EqualFold(choices[0].method.Scheme, "mailto") {
+			return flowConfirmEmail
+		}
+		return flowExecuteMethod
+	}
+	return flowChooseMethod
 }
 
 func unsubscribeChoices(methods []*url.URL) []unsubscribeChoice {
