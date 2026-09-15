@@ -64,6 +64,48 @@ func TestUnsubscribeChoicesPreferHTTPS(t *testing.T) {
 	}
 }
 
+func TestUnsubscribeFlowRequiresConfirmationForEmailOnly(t *testing.T) {
+	mailto, _ := url.Parse("mailto:list@example.com?subject=unsubscribe")
+	https, _ := url.Parse("https://example.com/unsubscribe/opaque")
+
+	tests := []struct {
+		name    string
+		choices []unsubscribeChoice
+		want    unsubscribeFlow
+	}{
+		{
+			name: "email only",
+			choices: []unsubscribeChoice{
+				{label: choiceEmail, method: mailto},
+			},
+			want: flowConfirmEmail,
+		},
+		{
+			name: "https only",
+			choices: []unsubscribeChoice{
+				{label: choiceHTTPS, method: https},
+			},
+			want: flowExecuteMethod,
+		},
+		{
+			name: "multiple methods",
+			choices: []unsubscribeChoice{
+				{label: choiceHTTPS, method: https},
+				{label: choiceEmail, method: mailto},
+			},
+			want: flowChooseMethod,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := unsubscribeFlowFor(test.choices); got != test.want {
+				t.Fatalf("flow = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestOneClickPostBody(t *testing.T) {
 	tests := []struct {
 		name string
