@@ -18,6 +18,26 @@ import (
 
 var aerc Aerc
 
+type mainThreadIPCHandler struct {
+	queue   func(func())
+	command func([]string) error
+}
+
+func (h mainThreadIPCHandler) Command(args []string) error {
+	done := make(chan error, 1)
+
+	// IPC connections are served from a background goroutine, but commands
+	// may mutate configuration and UI state. Serialize them with terminal
+	// input and drawing on the main loop. QueueFunc blocks when its bounded
+	// callback queue is full, applying backpressure instead of dropping or
+	// executing an unsafe command off-thread.
+	h.queue(func() {
+		done <- h.command(args)
+	})
+
+	return <-done
+}
+
 func Init(
 	crypto crypto.Provider,
 	cmd func(string, *config.AccountConfig, *models.MessageInfo) error,
@@ -27,8 +47,13 @@ func Init(
 	aerc.Init(crypto, cmd, complete, history, deferLoop)
 }
 
-func Drawable() ui.DrawableInteractive      { return &aerc }
-func IPCHandler() ipc.Handler               { return &aerc }
+func Drawable() ui.DrawableInteractive { return &aerc }
+func IPCHandler() ipc.Handler {
+	return mainThreadIPCHandler{
+		queue:   ui.QueueFunc,
+		command: aerc.Command,
+	}
+}
 func Command(args []string) error           { return aerc.Command(args) }
 func HandleMessage(msg types.WorkerMessage) { aerc.HandleMessage(msg) }
 
