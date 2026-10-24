@@ -26,6 +26,8 @@ type DirectoryLister interface {
 
 	Selected() string
 	Previous() string
+	IsOpening() bool
+	IsCurrentContext(context.Context) bool
 
 	Select(string)
 	Open(string, string, time.Duration, func(types.WorkerMessage), bool)
@@ -59,6 +61,7 @@ type DirectoryList struct {
 	store     *lib.DirStore
 	dirs      []string
 	selecting string
+	opening   bool
 	selected  string
 	previous  string
 	spinner   *Spinner
@@ -94,6 +97,16 @@ func (dirlist *DirectoryList) NewContext() {
 	dirlist.ctx, dirlist.cancel = context.WithCancel(context.Background())
 }
 
+// Selection state is owned by the UI loop, including delayed dispatch and
+// worker completion callbacks. Cancellation identifies superseded intents.
+func (dirlist *DirectoryList) IsCurrentContext(ctx context.Context) bool {
+	return ctx != nil && ctx == dirlist.ctx && ctx.Err() == nil
+}
+
+func (dirlist *DirectoryList) IsOpening() bool {
+	return dirlist.opening && dirlist.IsCurrentContext(dirlist.ctx)
+}
+
 func (dirlist *DirectoryList) UiConfig(dir string) *config.UIConfig {
 	if dir == "" {
 		dir = dirlist.Selected()
@@ -118,6 +131,10 @@ func (dirlist *DirectoryList) Update(msg types.WorkerMessage) {
 	case *types.Done:
 		switch msg := msg.InResponseTo().(type) {
 		case *types.OpenDirectory:
+			if !dirlist.IsCurrentContext(msg.Context) {
+				return
+			}
+			dirlist.opening = false
 			dirlist.previous = dirlist.selected
 			dirlist.selected = msg.Directory
 			dirlist.filterDirsByFoldersConfig()
@@ -185,33 +202,44 @@ func (dirlist *DirectoryList) Open(name string, query string, delay time.Duratio
 	dirlist.selecting = name
 
 	dirlist.NewContext()
+	dirlist.opening = true
 
 	go func(ctx context.Context) {
 		defer log.PanicHandler()
 
 		select {
 		case <-time.After(delay):
-			dirlist.worker.PostAction(&types.OpenDirectory{
-				Context:   ctx,
-				Directory: name,
-				Query:     query,
-				Force:     force,
-			},
-				func(msg types.WorkerMessage) {
+			// Recheck at the actual UI dispatch decision: a newer selection may
+			// have canceled this context while the timer/callback was pending.
+			ui.QueueFunc(func() {
+				if !dirlist.IsCurrentContext(ctx) {
+					return
+				}
+				dirlist.worker.PostAction(&types.OpenDirectory{
+					Context: ctx, Directory: name, Query: query, Force: force,
+				}, func(msg types.WorkerMessage) {
+					// Worker.ProcessMessage still retires terminal callbacks even
+					// when this old selection must have no UI side effects.
+					if !dirlist.IsCurrentContext(ctx) {
+						return
+					}
 					switch msg := msg.(type) {
+					case *types.Done:
+						dirlist.opening = false
 					case *types.Error:
+						dirlist.opening = false
 						dirlist.selecting = ""
 						log.Errorf("(%s) couldn't open directory %s: %v",
-							dirlist.acctConf.Name,
-							name,
-							msg.Error)
+							dirlist.acctConf.Name, name, msg.Error)
 					case *types.Cancelled:
+						dirlist.opening = false
 						log.Debugf("OpenDirectory cancelled")
 					}
 					if cb != nil {
 						cb(msg)
 					}
 				})
+			})
 		case <-ctx.Done():
 			log.Tracef("dirlist: skip %s", name)
 			return

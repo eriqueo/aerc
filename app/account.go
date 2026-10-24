@@ -400,6 +400,9 @@ func (acct *AccountView) onMessage(msg types.WorkerMessage) {
 			log.Infof("[%s] disconnected.", acct.acct.Name)
 			acct.SetStatus(state.SetConnected(false))
 		case *types.OpenDirectory:
+			if !acct.dirlist.IsCurrentContext(resp.Context) {
+				break
+			}
 			acct.dirlist.Update(msg)
 			if store, ok := acct.dirlist.SelectedMsgStore(); ok {
 				// If we've opened this dir before, we can re-render it from
@@ -425,6 +428,15 @@ func (acct *AccountView) onMessage(msg types.WorkerMessage) {
 			}
 		case *types.ListDirectories:
 			acct.dirlist.Update(msg)
+			// Listing may finish after an explicit query/navigation intent.
+			// Do not replace its context with the startup default/reopen.
+			if acct.dirlist.IsOpening() {
+				if acct.dirlist.Selected() == "" {
+					acct.msglist.SetInitDone()
+					acct.newConn = true
+				}
+				return
+			}
 			if dir := acct.dirlist.Selected(); dir != "" {
 				acct.dirlist.Select(dir)
 				return
