@@ -94,6 +94,7 @@ func (dirlist *DirectoryList) NewContext() {
 	if dirlist.cancel != nil {
 		dirlist.cancel()
 	}
+	dirlist.opening = false
 	dirlist.ctx, dirlist.cancel = context.WithCancel(context.Background())
 }
 

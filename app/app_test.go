@@ -344,3 +344,16 @@ func TestPendingNavigationDoesNotRestartStartupState(t *testing.T) {
 	acct.onMessage(&types.Done{Message: types.RespondTo(current)})
 	assertOpenRetired(t, acct.worker, current)
 }
+
+func TestVirtualDirectoryContextCancelsPendingOpen(t *testing.T) {
+	acct, dirs := selectionAccount(t)
+	dirs.Open("Inbox", "", 0, nil, false)
+	old := selectionAction(t, acct.worker)
+	// DirectoryTree.selectIndex uses NewContext without Open for virtual nodes.
+	dirs.NewContext()
+	if dirs.IsOpening() || old.Context.Err() == nil {
+		t.Fatal("virtual directory kept the canceled open marked pending")
+	}
+	acct.onMessage(&types.Cancelled{Message: types.RespondTo(old)})
+	assertOpenRetired(t, acct.worker, old)
+}
